@@ -83,6 +83,7 @@ class vaccine_system(object) :
     def recovery(self, re, ill_rate=0.1, method="resolve") : 
         """ simulate the recovery """
 
+        # get the recovery index for infected people getting resolved 
         if method == "ratio" :  
             recovery_num = int(len(self.infected_citizens) * re) 
             new_recovery_idx = list(np.random.choice(np.arange(len(self.infected_citizens)), recovery_num, replace=False))
@@ -269,9 +270,15 @@ def collect_stats(data, axis) :
 
     return mean, std 
 
-def main_sim(parameters : dict) :
+def main_sim(parameters : dict, sim_num : int, stats : str) :
     """ run all simulations and plotting time-varying graphs 
-        parameters : make sure that one and only one of the keys correspond to list values, mainly for params comparison 
+        
+        Arguments : 
+        - parameters : make sure that one and only one of the keys correspond to list values, mainly for params comparison 
+        - sim_num : simulation number 
+        - stats : stats chosen for plots 
+            - "basic" : output a) "infected_num", "uninfected_num", b) "request_num", "anti_body_num", "seriously_ill_num"
+            - "vaccine_control " : output metric that measure the performance of vaccine : "infected_num" + "seriously_ill_num"
     """
     params_key = parameters.keys()
     days = parameters["days"] if parameters["days"] else 7 
@@ -294,13 +301,19 @@ def main_sim(parameters : dict) :
         env = vaccine_system(**temp_params)
         infected_nums, uninfected_nums, requests_nums, anti_body_nums, ill_nums = env.simulate(sim_num=100)
 
-        datas = [infected_nums, uninfected_nums]
-        labels = ["infected_num", "uninfected_num"]
-        plotting(datas, labels, days, ax=axes[0][idx], title=(temp_param_key, param_value))
+        if stats == "basic" : 
+            datas = [infected_nums, uninfected_nums]
+            labels = ["infected_num", "uninfected_num"]
+            plotting(datas, labels, days, ax=axes[0][idx], title=(temp_param_key, param_value))
 
-        datas = [requests_nums, anti_body_nums, ill_nums]
-        labels = ["request_num", "anti_body_num", "seriously_ill_num"]
-        plotting(datas, labels, days, ax=axes[1][idx], title=(temp_param_key, param_value))
+            datas = [requests_nums, anti_body_nums, ill_nums]
+            labels = ["request_num", "anti_body_num", "seriously_ill_num"]
+            plotting(datas, labels, days, ax=axes[1][idx], title=(temp_param_key, param_value))
+        elif stats == "vaccine_control" : 
+            datas = np.array(infected_nums) + np.array(ill_nums)
+            labels = ["unsolved_num"]
+            plotting(datas, labels, days, ax=axes[0][idx], title=(temp_param_key, param_value))
+            
 
     plt.show()
 
@@ -329,6 +342,6 @@ def plotting(datas, labels, days, ax, title) :
 
 policy = "unif"
 params = {"citizen_num" : 1000, "vaccine_num" : 500, "days" : 7, "r_nau" : [1.5, 2.4, 2.8], "gov" : Government(policy)}
-main_sim(params)
+main_sim(params, sim_num=100, stats="basic")
 
 #plotting(uninfected_nums, "uninfected_num")
