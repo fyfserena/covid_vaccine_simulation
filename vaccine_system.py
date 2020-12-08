@@ -274,7 +274,7 @@ def main_sim(parameters : dict, sim_num : int, stats : str) :
     """ run all simulations and plotting time-varying graphs 
         
         Arguments : 
-        - parameters : make sure that one and only one of the keys correspond to list values, mainly for params comparison 
+        - parameters : make sure that only one of the keys correspond to list values, mainly for params comparison 
         - sim_num : simulation number 
         - stats : stats chosen for plots 
             - "basic" : output a) "infected_num", "uninfected_num", b) "request_num", "anti_body_num", "seriously_ill_num"
@@ -285,15 +285,31 @@ def main_sim(parameters : dict, sim_num : int, stats : str) :
     temp_parameters = parameters 
 
     # select the params values for comparison 
+    compare_key_num = 0 
     for param in params_key : 
         if type(parameters[param]) is list and len(parameters[param]) > 1 : 
             temp_param_values = parameters[param]
             temp_param_key = param 
             temp_parameters.pop(param)
             temp_params = temp_parameters
+            compare_key_num += 1 
             break 
+    
+    # if not for comparison, create singleton list 
+    if not compare_key_num : 
+        temp_params = temp_parameters
+        temp_param_key = list(temp_params.keys())[0]
+        temp_param_values = [temp_params[temp_param_key]]
 
-    fig, axes = plt.subplots(2, len(temp_param_values), figsize=(12, 8))
+    # deploy plot structure 
+    unit_width, unit_len = 6, 6
+    
+    if stats == "basic" : 
+        fig_width, fig_len = 2 * unit_width, len(temp_param_values) * unit_len
+        fig, axes = plt.subplots(2, len(temp_param_values), figsize=(fig_len, fig_width))
+    else : 
+        fig_width, fig_len = 1 * unit_width, len(temp_param_values) * unit_len
+        fig, axes = plt.subplots(1, len(temp_param_values), figsize=(fig_len, fig_width))
     
     # compare param values 
     for idx, param_value in enumerate(temp_param_values) : 
@@ -304,15 +320,21 @@ def main_sim(parameters : dict, sim_num : int, stats : str) :
         if stats == "basic" : 
             datas = [infected_nums, uninfected_nums]
             labels = ["infected_num", "uninfected_num"]
-            plotting(datas, labels, days, ax=axes[0][idx], title=(temp_param_key, param_value))
+
+            ax = axes[0][idx] if compare_key_num else axes[0]
+            plotting(datas, labels, days, ax=ax, title=(temp_param_key, param_value))
 
             datas = [requests_nums, anti_body_nums, ill_nums]
             labels = ["request_num", "anti_body_num", "seriously_ill_num"]
-            plotting(datas, labels, days, ax=axes[1][idx], title=(temp_param_key, param_value))
+
+            ax = axes[1][idx] if compare_key_num else axes[1]
+            plotting(datas, labels, days, ax=ax, title=(temp_param_key, param_value))
         elif stats == "vaccine_control" : 
-            datas = np.array(infected_nums) + np.array(ill_nums)
+            datas = [np.array(infected_nums) + np.array(ill_nums)]
             labels = ["unsolved_num"]
-            plotting(datas, labels, days, ax=axes[0][idx], title=(temp_param_key, param_value))
+
+            ax = axes[idx] if compare_key_num else axes
+            plotting(datas, labels, days, ax=ax, title=(temp_param_key, param_value))
             
 
     plt.show()
@@ -341,7 +363,7 @@ def plotting(datas, labels, days, ax, title) :
 # main_sim(params)
 
 policy = "unif"
-params = {"citizen_num" : 1000, "vaccine_num" : 500, "days" : 7, "r_nau" : [1.5, 2.4, 2.8], "gov" : Government(policy)}
+params = {"citizen_num" : 1000, "vaccine_num" : 500, "days" : 7, "r_nau" : 1.5, "gov" : Government(policy)}
 main_sim(params, sim_num=100, stats="basic")
 
 #plotting(uninfected_nums, "uninfected_num")
