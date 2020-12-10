@@ -20,22 +20,31 @@ class Government(object) :
     """ Government Agent """
     def __init__(self, policy : str) : 
         self.policy = policy 
-        self.citizens = []    
+        self.processed_requests = []    
 
     def reset(self) : 
-        self.citizens = []
+        self.processed_requests = []    
 
-    def decide(self, requests, vaccines_num) : 
-        self.citizens.extend(requests)
+    def decide(self, requests, citizen_num, vaccines_num, setting) : 
+        self.processed_requests.extend(requests)
 
-        if self.policy == "unif" : 
-            if type(requests) == list :     
-                vaccinated_idx = np.random.choice(np.arange(len(requests)), vaccines_num, replace=False)
-                
-                return vaccinated_idx
+        if setting == "full_info" : 
+            if self.policy == "unif" : 
+                if type(requests) == list :     
+                    vaccinated_idx = np.random.choice(np.arange(len(requests)), vaccines_num, replace=False)
+                    
+                    return vaccinated_idx
+        
+        elif setting == "streaming" : 
+            if self.policy == "unif" : 
+                vaccine_prob = vaccines_num / citizen_num 
+                cur_decide = np.random.rand() < vaccine_prob
+                return cur_decide
+            
+            
 
 class vaccine_system(object) : 
-    def __init__(self, gov, citizen_num, vaccine_num, days, r_nau) :
+    def __init__(self, gov, citizen_num, vaccine_num, days, r_nau, setting="full_info") :
         self.citizen_num = citizen_num
         self.all_citizens = self.gen_citizen(self.citizen_num)
         self.citizens = self.all_citizens[0]
@@ -49,6 +58,7 @@ class vaccine_system(object) :
         self.r_nau = r_nau 
         self.gov = gov 
         self.gammas = np.random.poisson(5, len(self.infected_citizens))
+        self.setting = setting
         self.ills = []
 
     def gen_info(self) :
@@ -194,11 +204,22 @@ class vaccine_system(object) :
 
         # assume the effectiveness is immedately known 
         if len(self.requests) > 0 : 
-            if len(self.requests) > effective_num : 
-                # goverment implements policy 
-                vaccinated_idx = self.gov.decide(self.requests, effective_num)
-            else : 
-                vaccinated_idx = np.arange(len(self.requests))
+            # goverment implements policy 
+            if self.setting == "full_info" : 
+                if len(self.requests) > effective_num :         
+                    vaccinated_idx = self.gov.decide(self.requests, len(self.requests), effective_num, self.setting)
+                else : 
+                    vaccinated_idx = np.arange(len(self.requests))
+            elif self.setting == "streaming" : 
+                vaccinated_idx = []
+                idx = 0 
+                while effective_num > 0 and idx < len(self.requests): 
+                    current_request = self.requests[idx]
+                    cur_decide = self.gov.decide([current_request], len(self.requests), effective_num, self.setting)
+                    if cur_decide : 
+                        vaccinated_idx.append(idx)
+                        effective_num -= 1 
+                    idx += 1 
 
             # vaccinated_num = len(vaccinated_idx)
             mask = np.ones(len(self.requests), dtype=bool)
@@ -220,6 +241,7 @@ class vaccine_system(object) :
         anti_body_num = []
         ill_num = []
 
+        # update for the given days 
         for i in range(self.days) : 
             self.update()
             infected_num.append(len(self.infected_citizens))
@@ -231,7 +253,7 @@ class vaccine_system(object) :
         return infected_num, uninfected_num, requests_num, anti_body_num, ill_num
 
     def reset(self) : 
-        """ reset all parameters """
+        """ reset all parameters for new simulation """
         self.all_citizens = self.gen_citizen(self.citizen_num)
         self.citizens = self.all_citizens[0]
         self.infected_citizens = self.all_citizens[1]
@@ -263,14 +285,15 @@ class vaccine_system(object) :
 
 def collect_stats(data, axis) : 
     """ collect means and std """
+    num = len(data)
     mean = np.mean(data, axis=axis)
     std = np.std(data, axis=axis)
-
+    mean_std = std / (num ** (1/2))
     #print(data, mean, std)
 
-    return mean, std 
+    return mean, mean_std 
 
-def main_sim(parameters : dict, sim_num : int, stats : str) :
+def main_sim(parameters : dict, sim_num : int, stats : str, stats_form : str) :
     """ run all simulations and plotting time-varying graphs 
         
         Arguments : 
@@ -279,9 +302,11 @@ def main_sim(parameters : dict, sim_num : int, stats : str) :
         - stats : stats chosen for plots 
             - "basic" : output a) "infected_num", "uninfected_num", b) "request_num", "anti_body_num", "seriously_ill_num"
             - "vaccine_control " : output metric that measure the performance of vaccine : "infected_num" + "seriously_ill_num"
+        - stats_form : either number or percentage 
     """
     params_key = parameters.keys()
     days = parameters["days"] if parameters["days"] else 7 
+    ori_citizen_num = parameters["citizen_num"]
     temp_parameters = parameters 
 
     # select the params values for comparison 
@@ -317,39 +342,50 @@ def main_sim(parameters : dict, sim_num : int, stats : str) :
         env = vaccine_system(**temp_params)
         infected_nums, uninfected_nums, requests_nums, anti_body_nums, ill_nums = env.simulate(sim_num=100)
 
+        if stats_form == "percent" :  
+            infected_nums, uninfected_nums, requests_nums, anti_body_nums, ill_nums =\
+                list(map(lambda x : np.array(x) / ori_citizen_num, [infected_nums, uninfected_nums, requests_nums, anti_body_nums, ill_nums]))
+
+        x_label = "days" 
+        y_label = "percentage" if stats_form == "percent" else "num"
+        
         if stats == "basic" : 
             datas = [infected_nums, uninfected_nums]
             labels = ["infected_num", "uninfected_num"]
 
             ax = axes[0][idx] if compare_key_num else axes[0]
-            plotting(datas, labels, days, ax=ax, title=(temp_param_key, param_value))
+            plotting(datas, labels, days, ax=ax, title=(temp_param_key, param_value), x_label=x_label, y_label=y_label)
 
             datas = [requests_nums, anti_body_nums, ill_nums]
             labels = ["request_num", "anti_body_num", "seriously_ill_num"]
 
             ax = axes[1][idx] if compare_key_num else axes[1]
-            plotting(datas, labels, days, ax=ax, title=(temp_param_key, param_value))
+            sub_title = (temp_param_key, param_value) if compare_key_num else None  
+            plotting(datas, labels, days, ax=ax, title=sub_title, x_label=x_label, y_label=y_label)
         elif stats == "vaccine_control" : 
             datas = [np.array(infected_nums) + np.array(ill_nums)]
             labels = ["unsolved_num"]
 
             ax = axes[idx] if compare_key_num else axes
-            plotting(datas, labels, days, ax=ax, title=(temp_param_key, param_value))
+            sub_title = (temp_param_key, param_value) if compare_key_num else None  
+            plotting(datas, labels, days, ax=ax, title=sub_title, x_label=x_label, y_label=y_label)
             
-
     plt.show()
 
-def plotting(datas, labels, days, ax, title) :  
+def plotting(datas, labels, days, ax, title, x_label, y_label) :  
     epochs = np.arange(1, days+1)
 
     for idx, data in enumerate(datas) :    
         mean, std = collect_stats(data, 0)
         ax.plot(epochs, mean, label=labels[idx])
         ax.fill_between(epochs, mean-std, mean+std ,alpha=0.3)
-        ax.set_xlabel("days")
-        ax.set_ylabel("numbers")
-        param_key, param_value = title 
-        ax.set_title(param_key + " : " + str(param_value))
+        ax.set_xlabel(x_label)
+        ax.set_ylabel(y_label)
+        
+        if title : 
+            param_key, param_value = title 
+            ax.set_title(param_key + " : " + str(param_value))
+        
         ax.legend()
 
 # env = vaccine_system(1000, 100, 7)
@@ -363,7 +399,8 @@ def plotting(datas, labels, days, ax, title) :
 # main_sim(params)
 
 policy = "unif"
-params = {"citizen_num" : 1000, "vaccine_num" : 500, "days" : 7, "r_nau" : 1.5, "gov" : Government(policy)}
-main_sim(params, sim_num=100, stats="basic")
+setting = ["full_info", "streaming"]
+params = {"citizen_num" : 1000, "vaccine_num" : 500, "days" : 14, "r_nau" : 1.5, "gov" : Government(policy), "setting" : setting}
+main_sim(params, sim_num=100, stats="vaccine_control", stats_form="percent")
 
 #plotting(uninfected_nums, "uninfected_num")
