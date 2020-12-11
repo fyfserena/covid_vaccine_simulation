@@ -26,6 +26,14 @@ class Government(object) :
         self.processed_requests = []    
 
     def decide(self, requests, citizen_num, vaccines_num, setting) : 
+        """ governemnt decides if should give vaccine injection 
+            setting : 
+                - "full_info" : government has full information of the lining requests
+                - "streaming" : requests comes in order, government needs to make decision for coming requests and process the next request
+        
+        """
+
+        # add current request to processed requests 
         self.processed_requests.extend(requests)
 
         if setting == "full_info" : 
@@ -283,12 +291,13 @@ class vaccine_system(object) :
 
         return infected_nums, uninfected_nums, requests_nums, anti_body_nums, ill_nums 
 
-def collect_stats(data, axis) : 
+def collect_stats(data, axis, sample_mean=False) : 
     """ collect means and std """
     num = len(data)
     mean = np.mean(data, axis=axis)
     std = np.std(data, axis=axis)
-    mean_std = std / (num ** (1/2))
+
+    mean_std = std / (num ** (1/2)) if sample_mean else std 
     #print(data, mean, std)
 
     return mean, mean_std 
