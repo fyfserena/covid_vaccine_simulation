@@ -7,10 +7,72 @@ class Citizen(object) :
         self.age = info["age"] 
         self.gender = info["gender"]
         self.occupation = info["occupation"] 
-        self.infected = False 
-        self.gamma = np.random.poisson(5)
+        self.infected = info["infected"] 
+        self.gamma = info["gamma"]
+        # self.ethnicity = info["ethnicity"] 
+        # self.weight = info["weight"]
+        # self.height = info["height"]
+        # self.home_cat = info["home_cat"]
+        # self.diabetes_type = info["diabetes_type"]
+        # self.if_heart_disease = info["if_heart_disease"]
+        # self.if_ckd = info["if_ckd"]
+        # self.if_cancer = info["if_cancer"]
 
     def get_sick_after_infection(self) : 
+        # bmi = self.weight/((self.height/100)**2)
+        # if self.diabetes_type == 0: 
+        #     b_type1, b_type2 = 0, 0
+        # elif self.diabetes_type == 1:
+        #     b_type1, b_type2 = 1, 0
+        # else:
+        #     b_type1, b_type2 = 0, 1
+
+        # def death_female(age, bmi, ethrisk, homecat, b_type1, b_type2, b_stroke, b_ckd, b_cancer):
+        #   Iethrisk = [0.1753,0.2157,0.3923,0.3772,0.1667,0.3130,0.2305]
+        #   Ihomecat = [0,1.2843,0.3902]
+        #   dage=age/10
+        #   age_2 = pow(dage,3)*np.log(dage)
+        #   age_1 = pow(dage,3)
+        #   dbmi=bmi/10
+        #   bmi_1 = pow(dbmi,.5)
+        #   bmi_2 = pow(dbmi,.5)*np.log(dbmi)
+
+        #   age_1 = age_1 - 115.5998
+        #   age_2 = age_2 - 183.0383
+        #   bmi_1 = bmi_1 - 1.6324
+        #   bmi_2 = bmi_2 - 1.6001
+
+        #   a=Iethrisk[ethrisk]+Ihomecat[homecat]+age_1 * 0.0535+age_2 * -0.0201 
+        #   + bmi_1 * -19.7436+bmi_2 * 6.6649+b_stroke * (0.2915+0.2099)
+        #   +b_type1 * 1.3918+ b_type2 * 1.8389+b_ckd * 1.5+b_cancer * 1.5
+        #   +age_1 * b_type2 * -0.02006+age_2 * b_type2 * 0.0075
+
+        #   return 100.0 * (1 - pow(0.999977290630341, np.exp(a)))
+
+        # def death_male(age, bmi, ethrisk, homecat, b_type1, b_type2, b_stroke, b_ckd, b_cancer):
+        #   Iethrisk = [0.4953,0.5357,0.7223,0.6972,0.4867,0.6330,0.5505]
+        #   Ihomecat = [0,1.4545,0.4426]
+
+        #   dage=age/10
+        #   age_1 = dage
+        #   age_2 = pow(dage,3)
+        #   dbmi=bmi/10
+        #   bmi_2 = pow(dbmi,-.5)*np.log(dbmi)
+        #   bmi_1 = pow(dbmi,-.5)
+    
+        #   age_1 = age_1 - 4.7707
+        #   age_2 = age_2 - 108.57944
+        #   bmi_1 = bmi_1 - 0.61367
+        #   bmi_2 = bmi_2 - 0.59929
+
+        #   a = Iethrisk[ethrisk]+ Ihomecat[homecat]+age_1 * 1.45475+age_2 * -0.00282
+        #   +bmi_1 * -22.0609+bmi_2 * -20.3035+b_stroke * (0.2126+0.25167)+ b_type1 * 1.7655
+        #   + b_type2 * 1.5551+b_ckd * 1.5+b_cancer * 1.5+age_1 * b_type2 * -0.5325+age_2 * b_type2 * 0.00134
+    
+        #   return 100.0 * (1 - pow(0.999977290630341, np.exp(a)))
+
+        # if not self.gender: return death_female(self.age, bmi, self.ethnicity, self.home_cat, b_type1, b_type2, self.if_heart_disease, self.if_ckd, self.if_cancer)
+        # else: return death_male(self.age, bmi, self.ethnicity, self.home_cat, b_type1, b_type2, self.if_heart_disease, self.if_ckd, self.if_cancer)
         pass 
 
     def infect_after_infection(self) : 
@@ -54,6 +116,7 @@ class Government(object) :
 class vaccine_system(object) : 
     def __init__(self, gov, citizen_num, vaccine_num, days, r_nau, setting="full_info") :
         self.citizen_num = citizen_num
+        self.citizen_stats = []
         self.all_citizens = self.gen_citizen(self.citizen_num)
         self.citizens = self.all_citizens[0]
         self.infected_citizens = self.all_citizens[1]
@@ -68,6 +131,7 @@ class vaccine_system(object) :
         self.gammas = np.random.poisson(5, len(self.infected_citizens))
         self.setting = setting
         self.ills = []
+        
 
     def gen_info(self) :
         """ generate information for virtual citizens """
@@ -75,26 +139,32 @@ class vaccine_system(object) :
         gender = np.random.randint(2)
         occupation = np.random.randint(5)
         infected = np.random.rand(1) < 0.06 
+        gamma = np.random.poisson(5)
 
-        return {"age" : age, "gender" : gender, "occupation" : occupation, "infected" : infected}
+        return {"age" : age, "gender" : gender, "occupation" : occupation, "infected" : infected, "gamma" : gamma}
 
     def gen_citizen(self, citizen_num) : 
         """ generate virtual citizens """
-
+        citizens = []
         infected_citizens = []
         uninfected_citizens = []
-        citizens = []
 
         for i in range(citizen_num) : 
             info = self.gen_info()
+            info["id"] = i
+
             citizen_ = Citizen(info)
+            #self.citizen_stats.append(list(info.values()))
             
+            # record infected / uninfected by citizen id 
             if info["infected"] : 
                 infected_citizens.append(citizen_)
             else : 
                 uninfected_citizens.append(citizen_)
             
             citizens.append(citizen_)
+        
+        #self.citizen_stats = np.array(self.citizen_stats)
 
         return citizens, infected_citizens, uninfected_citizens
 
@@ -108,15 +178,24 @@ class vaccine_system(object) :
         elif method == "resolve" :
             recovery_num = 0 
             new_recovery_idx = []
+            ill_idx = []
+
             for idx, citizen_ in enumerate(self.infected_citizens) : 
                 if citizen_.gamma == 0 : 
                     recovery_num += 1 
                     new_recovery_idx.append(idx)
                     citizen_.gamma = np.random.poisson(5)
 
+            # self.recoveries[self.gammas[self.infected_citizens[self.infected_citizens == 0]] == 0] = 1 
+            # self.gammas[self.gammas[self.infected_citizens] == 0] 
+                    
+                    # get the ill index from the new recovered 
+                    # if np.random.rand() < citizen_.get_sick_after_infection() : 
+                    #     ill_idx.append(idx) 
+
         self.infected_citizens = np.array(self.infected_citizens)
         
-        # get the ill index from the new recovered 
+        
         if len(new_recovery_idx) > 0 : 
             ill_num = int(ill_rate * len(new_recovery_idx))
             ill_idx = list(np.random.choice(new_recovery_idx, ill_num, replace=False))
@@ -153,9 +232,9 @@ class vaccine_system(object) :
 
     def infection_spread(self, r_nau, infectious_period=5, random_mode=True) :
         """ simulate the infection """
-        discount_factor = 0 
-        while not discount_factor : 
-            discount_factor = np.random.poisson(10)
+        # discount_factor = 0 
+        # while not discount_factor : 
+        #     discount_factor = np.random.poisson(10)
 
         new_infected_num = 0 
         if random_mode : 
