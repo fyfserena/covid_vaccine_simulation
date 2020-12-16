@@ -116,8 +116,9 @@ class Government(object) :
             
 
 class vaccine_system(object) : 
-    def __init__(self, gov, citizen_num, vaccine_num, days, r_nau, setting="full_info") :
+    def __init__(self, gov, citizen_num, vaccine_num, days, r_nau, gamma, setting="full_info") :
         self.citizen_num = citizen_num
+        self.gamma = gamma 
         self.citizen_stats = []
         self.gen_citizen(self.citizen_num)
 
@@ -143,13 +144,17 @@ class vaccine_system(object) :
 
         self.grouping()
         self.setting = setting
+        self.current_day = 1
+        
     
     def reset(self, gov, citizen_num, vaccine_num, days, r_nau, setting="full_info") : 
         """ reset all parameters for new simulation """
         pass 
 
-    def grouping(self, to_group_label=None) : 
-        self.id_by_group = {group_id : self.ids[self.group == group_id] for group_id in range(5)}
+    def grouping(self, to_group_label=False) : 
+        if not to_group_label : 
+            self.id_by_group = {group_id : self.ids[self.group == group_id] for group_id in range(5)}
+
         self.infected_num_by_group = np.array([np.sum((self.citizens_i_status == 1) * (self.group == group_id)) for group_id in range(5)])
         self.infected_id_by_group = {group_id : self.ids[(self.group == group_id) * (self.citizens_i_status == 1)] for group_id in range(5)}
         
@@ -164,8 +169,8 @@ class vaccine_system(object) :
         age = np.random.randint(10)
         gender = np.random.randint(2)
         occupation = np.random.randint(5)
-        infected = np.random.rand() < 0.06 
-        gamma = np.random.poisson(5)
+        infected = np.random.rand() < 0.0005 
+        gamma = np.random.poisson(self.gamma)
 
         return {"age" : age, "gender" : gender, "occupation" : occupation, 
                 "infected" : infected, "gamma" : gamma, "request_vaccine" : False, 
@@ -195,72 +200,97 @@ class vaccine_system(object) :
             gamma_mask = self.gammas == 0 
             infect_mask = self.citizens_i_status == 1 
             new_resolve_idx = self.ids[gamma_mask * infect_mask]
-            self.citizens_i_status[gamma_mask * infect_mask] = 0 
-            gamma_update_num = np.sum(gamma_mask)
-            self.gammas[gamma_mask] = np.random.poisson(5, gamma_update_num)
+            #self.citizens_i_status[gamma_mask * infect_mask] = 2 
+            #gamma_update_num = np.sum(gamma_mask)
+            #self.gammas[gamma_mask] = np.random.poisson(self.gamma, gamma_update_num)
         
         # compute the ill id from new_
         if len(new_resolve_idx) > 0 : 
-            ill_num = int(ill_rate * len(new_resolve_idx))
+            ill_num = int(np.ceil(ill_rate * len(new_resolve_idx)))
             ill_idx = list(np.random.choice(range(len(new_resolve_idx)), ill_num, replace=False))
         else : 
             ill_idx = []
 
         # update ills 
-        self.ills[ill_idx] = 1 
+        self.ill_idx = ill_idx 
+        #self.ills[ill_idx] = 1 
 
         # filter out the healthy id from new resolved case 
         mask = np.ones(len(new_resolve_idx), dtype = bool)
         mask[ill_idx] = False
         healthy_new_resolve_idx = new_resolve_idx[mask]
+        self.healthy_new_resolve_idx = healthy_new_resolve_idx
 
         # add them into request and remove from infected   
-        if len(healthy_new_resolve_idx) > 0 : 
-            self.requests[healthy_new_resolve_idx] = 1 
-            self.citizens_i_status[healthy_new_resolve_idx] = 0 
+        # if len(healthy_new_resolve_idx) > 0 : 
+        #     self.requests[healthy_new_resolve_idx] = 1 
+        #     self.citizens_i_status[healthy_new_resolve_idx] = 0 
+        
+        #self.grouping(to_group_label=True)
 
     def infection_spread(self, r_nau, infectious_period=5, random_mode=True) :
         """ simulate the infection """
-        new_infected_num = 0 
-
         if random_mode : 
             group_infect_param = np.matmul(self.risk_matrix, self.infected_num_by_group) / self.citizen_num
             group_newly_infected_num = self.susceptible_num_by_group * group_infect_param
+            #print(group_newly_infected_num)
             group_newly_infected_id = [sampling(group_newly_infected_num[group_id], self.susceptible_id_by_group[group_id]) for group_id in range(5)]
-
+            self.group_newly_infected_id = group_newly_infected_id
             #print("before", group_infect_param, self.susceptible_num_by_group, group_newly_infected_num, self.infected_num_by_group, group_newly_infected_id)
+
             # update infected status and vaccine requests 
-            for group_id in range(5) : 
-                self.citizens_i_status[group_newly_infected_id[group_id]] = 1 
-                self.requests[group_newly_infected_id[group_id]] = 0 
+            # for group_id in range(5) : 
+            #     self.citizens_i_status[group_newly_infected_id[group_id]] = 1 
+            #     self.requests[group_newly_infected_id[group_id]] = 0 
             
-            self.grouping()
+            # self.grouping(to_group_label=True)
             #print("after", group_infect_param, self.susceptible_num_by_group, self.infected_num_by_group)
+
             # update infectious period for infected people 
-            gamma_mask = self.gammas > 0 
-            infect_mask = self.citizens_i_status == 1 
-            self.gammas[gamma_mask * infect_mask] -= 1 
+            # gamma_mask = self.gammas > 0 
+            # infect_mask = self.citizens_i_status == 1 
+            # self.gammas[gamma_mask * infect_mask] -= 1 
 
         else : 
             new_infected_num = np.sum(self.citizens_i_status) * r_nau / infectious_period 
 
 
     def update(self) : 
-        """" implements recovery -> infection -> vaccine injection """
+        """" implements recovery, infection -> vaccine injection """
         # recover 
         self.recovery(0.1)
-        #print("recovery", "I : ", len(self.infected_citizens), "U : ", len(self.uninfected_citizens), "R : ", len(self.requests))
+        #print(self.current_day, "recovery", "I : ", np.sum(self.citizens_i_status == 1), "U : ", self.citizen_num-np.sum(self.citizens_i_status == 1), "R : ", np.sum(self.citizens_i_status == 0))
 
         # infection spread 
         noise = np.random.normal()
         noise = 1 if noise < -self.r_nau else noise  
         noisy_r_nau = self.r_nau + noise 
         self.infection_spread(noisy_r_nau, 5)
-        #print("infection", "I : ", len(self.infected_citizens), "U : ", len(self.uninfected_citizens), "R : ", len(self.requests))
+        #print(self.current_day, "infection", "I : ", np.sum(self.citizens_i_status == 1), "U : ", self.citizen_num-np.sum(self.citizens_i_status == 1), "R : ", np.sum(self.citizens_i_status == 0))
 
-        capacity_per_day = int(self.vaccine_num / self.days)
+        # update from last day's stat 
+        self.requests[self.healthy_new_resolve_idx] = 1 
+        self.citizens_i_status[self.healthy_new_resolve_idx] = 2 
+        self.ills[self.ill_idx] = 1 
+
+        for group_id in range(5) : 
+            self.citizens_i_status[self.group_newly_infected_id[group_id]] = 1 
+            self.requests[self.group_newly_infected_id[group_id]] = 0 
+        
+        zero_gamma_mask = self.gammas == 0 
+        pos_gamma_mask = self.gammas > 0 
+        
+        infect_mask = self.citizens_i_status == 1 
+        gamma_update_num = np.sum(zero_gamma_mask)
+
+        self.gammas[zero_gamma_mask] = np.random.poisson(self.gamma, gamma_update_num)
+        self.gammas[pos_gamma_mask * infect_mask] -= 1 
+        
+        self.grouping(to_group_label=True)
+
+        # capacity_per_day = int(self.vaccine_num / self.days)
         effective_rate = 0.9
-        effective_num = int(capacity_per_day * effective_rate)
+        effective_num = int(self.vaccine_num / self.days * effective_rate)
 
         # assume the effectiveness is immedately known 
         if np.sum(self.requests) > 0 : 
@@ -274,7 +304,7 @@ class vaccine_system(object) :
                         self.requests[vaccinated_idx[group_id]] = 0 
                         self.citizens_i_status[vaccinated_idx[group_id]] = self.status_to_idx["anti_body"] 
 
-                    self.grouping()
+                    self.grouping(to_group_label=True)
 
                 else : 
                     vaccinated_idx = np.arange(np.sum(self.requests))
@@ -289,7 +319,8 @@ class vaccine_system(object) :
                         effective_num -= 1 
                     idx += 1 
         
-        #print("vaccine", "I : ", len(self.infected_citizens), "U : ", len(self.uninfected_citizens), "R : ", len(self.requests))
+        #print(self.current_day, "vaccine", "I : ", np.sum(self.citizens_i_status == 1), "U : ", self.citizen_num-np.sum(self.citizens_i_status == 1), "R : ", np.sum(self.citizens_i_status == 0))
+        self.current_day += 1 
 
 
     def start(self) : 
@@ -315,29 +346,27 @@ class vaccine_system(object) :
             anti_body_num.append(np.sum(self.citizens_i_status == 2))
             ill_num.append(np.sum(self.ills))
             
-            group_infected_num.append(list(self.infected_num_by_group))
+            group_infected_num.append(self.infected_num_by_group)
             group_uninfected_num.append([self.citizen_num - np.sum( (self.group == group_id) * (self.requests == 1) ) for group_id in range(5)])
             group_requests_num.append([np.sum( (self.group == group_id) * (self.requests == 0) ) for group_id in range(5)])
             group_anti_body_num.append([np.sum( (self.group == group_id) * (self.requests == 2) ) for group_id in range(5)])
             group_ill_num.append([np.sum( (self.group == group_id) * (self.ills == 1) ) for group_id in range(5)])
 
-        #print(infected_num, uninfected_num, requests_num, anti_body_num, ill_num)
-        #print(np.array(group_infected_num))
         return infected_num, uninfected_num, requests_num, anti_body_num, ill_num,\
                 group_infected_num, group_uninfected_num, group_requests_num, group_anti_body_num, group_ill_num
         
     def create_risk_matrix(self, row) : 
         """ create cross-group contact-risk matrix """
         mat = np.zeros((row, row))
-        delta = 3
+        delta = 0.5
         for i in range(row) : 
             for j in range(i, row) : 
                 if i == j : 
                     mat[i, j] = 1 * delta 
                 else : 
-                    mat[i, j] = (1 - 0.2 * (j - i)) * delta 
+                    mat[i, j] = (1 - 0.25 * (j - i)) * delta 
             
-            delta -= 0.5 
+            delta -= delta / row
         
         for i in range(row) : 
             for j in range(i) : 
@@ -346,8 +375,8 @@ class vaccine_system(object) :
         return mat 
         
 def sampling(target_num, id_to_sample) : 
-        if len(id_to_sample) > target_num : 
-            sampled_id = np.random.choice(id_to_sample, int(target_num), replace=False)
+        if len(id_to_sample) > np.ceil(target_num) : 
+            sampled_id = np.random.choice(id_to_sample, int(np.ceil(target_num)), replace=False)
         else : 
             sampled_id = id_to_sample
         
@@ -387,14 +416,14 @@ def simulate(sim_num = 1, sim_params=None) :
     stats = {}
     stats["infected_num"] = infected_nums
     stats["uninfected_num"] = uninfected_nums
-    stats["requests_num"] = requests_nums
+    stats["request_num"] = requests_nums
     stats["anti_body_num"] = anti_body_nums
     stats["ill_num"] = ill_nums 
 
     group_stats = {}
     group_stats["infected_num"] = group_infected_nums
     group_stats["uninfected_num"] = group_uninfected_nums
-    group_stats["requests_num"] = group_requests_nums
+    group_stats["request_num"] = group_requests_nums
     group_stats["anti_body_num"] = group_anti_body_nums
     group_stats["ill_num"] = group_ill_nums 
 
@@ -561,7 +590,7 @@ def plotting(datas, labels, days, ax, title, x_label, y_label, group=False) :
 
 policy = "unif"
 setting = "full_info"
-params = {"citizen_num" : 1000, "vaccine_num" : [200, 500, 1000], "days" : 21, "r_nau" : 1.5, "gov" : Government(policy), "setting" : setting}
-main_sim(params, sim_num=10, stats_type="basic", stats_digit_form="percent", popultaion=False, metric="infected_num")
+params = {"citizen_num" : 10000, "vaccine_num" : [2, 5, 10], "days" : 100, "r_nau" : 1.5, "gov" : Government(policy), "gamma" : 10, "setting" : setting}
+main_sim(params, sim_num=1, stats_type="basic", stats_digit_form="percent", popultaion=True, metric="infected_num")
 
 #plotting(uninfected_nums, "uninfected_num")
