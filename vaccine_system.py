@@ -151,9 +151,11 @@ class vaccine_system(object) :
     def grouping(self, to_group_label=None) : 
         self.id_by_group = {group_id : self.ids[self.group == group_id] for group_id in range(5)}
         self.infected_num_by_group = np.array([np.sum((self.citizens_i_status == 1) * (self.group == group_id)) for group_id in range(5)])
-        self.susceptible_num_by_group = np.array([np.sum((self.citizens_i_status == 0) * (self.group == group_id)) for group_id in range(5)])
         self.infected_id_by_group = {group_id : self.ids[(self.group == group_id) * (self.citizens_i_status == 1)] for group_id in range(5)}
+        
+        self.susceptible_num_by_group = np.array([np.sum((self.citizens_i_status == 0) * (self.group == group_id)) for group_id in range(5)])
         self.susceptible_id_by_group = {group_id : self.ids[(self.group == group_id) * (self.citizens_i_status == 0)] for group_id in range(5)}
+
         self.requests_by_group = {group_id : self.ids[(self.group == group_id) * (self.requests == 1)] for group_id in range(5)}
         self.anti_body_by_group = {group_id : self.ids[(self.group == group_id) * (self.citizens_i_status == self.status_to_idx["anti_body"])] for group_id in range(5)}
 
@@ -297,6 +299,12 @@ class vaccine_system(object) :
         requests_num = []
         anti_body_num = []
         ill_num = []
+        
+        group_infected_num = []
+        group_uninfected_num = []
+        group_requests_num = []
+        group_anti_body_num = []
+        group_ill_num = []
 
         # update for the given days 
         for i in range(self.days) : 
@@ -306,9 +314,17 @@ class vaccine_system(object) :
             requests_num.append(np.sum(self.requests))
             anti_body_num.append(np.sum(self.citizens_i_status == 2))
             ill_num.append(np.sum(self.ills))
-        
+            
+            group_infected_num.append(list(self.infected_num_by_group))
+            group_uninfected_num.append([self.citizen_num - np.sum( (self.group == group_id) * (self.requests == 1) ) for group_id in range(5)])
+            group_requests_num.append([np.sum( (self.group == group_id) * (self.requests == 0) ) for group_id in range(5)])
+            group_anti_body_num.append([np.sum( (self.group == group_id) * (self.requests == 2) ) for group_id in range(5)])
+            group_ill_num.append([np.sum( (self.group == group_id) * (self.ills == 1) ) for group_id in range(5)])
+
         #print(infected_num, uninfected_num, requests_num, anti_body_num, ill_num)
-        return infected_num, uninfected_num, requests_num, anti_body_num, ill_num
+        #print(np.array(group_infected_num))
+        return infected_num, uninfected_num, requests_num, anti_body_num, ill_num,\
+                group_infected_num, group_uninfected_num, group_requests_num, group_anti_body_num, group_ill_num
         
     def create_risk_matrix(self, row) : 
         """ create cross-group contact-risk matrix """
@@ -345,16 +361,45 @@ def simulate(sim_num = 1, sim_params=None) :
     anti_body_nums = []
     ill_nums = []
 
+    group_infected_nums = []
+    group_uninfected_nums = []
+    group_requests_nums = []
+    group_anti_body_nums = []
+    group_ill_nums = []
+
     for i in range(sim_num) : 
         env = vaccine_system(**sim_params)
-        infected_num, uninfected_num, requests_num, anti_body_num, ill_num = env.start() 
+        infected_num, uninfected_num, requests_num, anti_body_num, ill_num,\
+                group_infected_num, group_uninfected_num, group_requests_num, group_anti_body_num, group_ill_num = env.start() 
+
         infected_nums.append(infected_num)
         uninfected_nums.append(uninfected_num)
         requests_nums.append(requests_num)
         anti_body_nums.append(anti_body_num)
         ill_nums.append(ill_num)
 
-    return infected_nums, uninfected_nums, requests_nums, anti_body_nums, ill_nums 
+        group_infected_nums.append(group_infected_num)
+        group_uninfected_nums.append(group_uninfected_num)
+        group_requests_nums.append(group_requests_num)
+        group_anti_body_nums.append(group_anti_body_num)
+        group_ill_nums.append(group_ill_num)
+
+    stats = {}
+    stats["infected_num"] = infected_nums
+    stats["uninfected_num"] = uninfected_nums
+    stats["requests_num"] = requests_nums
+    stats["anti_body_num"] = anti_body_nums
+    stats["ill_num"] = ill_nums 
+
+    group_stats = {}
+    group_stats["infected_num"] = group_infected_nums
+    group_stats["uninfected_num"] = group_uninfected_nums
+    group_stats["requests_num"] = group_requests_nums
+    group_stats["anti_body_num"] = group_anti_body_nums
+    group_stats["ill_num"] = group_ill_nums 
+
+    #print(np.array(group_stats["infected_num"]).shape, np.array(group_stats["ill_num"]).shape)
+    return stats, group_stats
 
 def collect_stats(data, axis, sample_mean=False) : 
     """ collect means and std """
@@ -367,16 +412,20 @@ def collect_stats(data, axis, sample_mean=False) :
 
     return mean, mean_std 
 
-def main_sim(parameters : dict, sim_num : int, stats : str, stats_form : str) :
+def main_sim(parameters : dict, sim_num : int, stats_type : str, stats_digit_form : str, popultaion : bool, metric : str) :
     """ run all simulations and plotting time-varying graphs 
         
         Arguments : 
         - parameters : make sure that only one of the keys correspond to list values, mainly for params comparison 
         - sim_num : simulation number 
         - stats : stats chosen for plots 
-            - "basic" : output a) "infected_num", "uninfected_num", b) "request_num", "anti_body_num", "seriously_ill_num"
-            - "vaccine_control " : output metric that measure the performance of vaccine : "infected_num" + "seriously_ill_num"
-        - stats_form : either number or percentage 
+            - population : 
+                - "basic" : output a) "infected_num", "uninfected_num", b) "request_num", "anti_body_num", "seriously_ill_num"
+                - "vaccine_control " : output metric that measure the performance of vaccine : "infected_num" + "seriously_ill_num"
+            - group : 
+                - for better visualization, we provide arguments : 
+                    - all_group with single metrics 
+        - stats_digit_form : either number or percentage 
     """
     params_key = parameters.keys()
     days = parameters["days"] if parameters["days"] else 7 
@@ -403,9 +452,14 @@ def main_sim(parameters : dict, sim_num : int, stats : str, stats_form : str) :
     # deploy plot structure 
     unit_width, unit_len = 6, 6
     
-    if stats == "basic" : 
-        fig_width, fig_len = 2 * unit_width, len(temp_param_values) * unit_len
-        fig, axes = plt.subplots(2, len(temp_param_values), figsize=(fig_len, fig_width))
+    if popultaion : 
+        if stats_type == "basic" : 
+            fig_width, fig_len = 2 * unit_width, len(temp_param_values) * unit_len
+            fig, axes = plt.subplots(2, len(temp_param_values), figsize=(fig_len, fig_width))
+        else : 
+            fig_width, fig_len = 1 * unit_width, len(temp_param_values) * unit_len
+            fig, axes = plt.subplots(1, len(temp_param_values), figsize=(fig_len, fig_width))
+    
     else : 
         fig_width, fig_len = 1 * unit_width, len(temp_param_values) * unit_len
         fig, axes = plt.subplots(1, len(temp_param_values), figsize=(fig_len, fig_width))
@@ -413,54 +467,87 @@ def main_sim(parameters : dict, sim_num : int, stats : str, stats_form : str) :
     # compare param values 
     for idx, param_value in enumerate(temp_param_values) : 
         temp_params[temp_param_key] = param_value
-        #env = vaccine_system(**temp_params)
-        infected_nums, uninfected_nums, requests_nums, anti_body_nums, ill_nums = simulate(sim_num=sim_num, sim_params=temp_params)
+        stats, group_stats = simulate(sim_num=sim_num, sim_params=temp_params)
 
-        if stats_form == "percent" :  
-            infected_nums, uninfected_nums, requests_nums, anti_body_nums, ill_nums =\
-                list(map(lambda x : np.array(x) / ori_citizen_num, [infected_nums, uninfected_nums, requests_nums, anti_body_nums, ill_nums]))
+        if stats_digit_form == "percent" :  
+            for key, value in list(stats.items()) : 
+                stats[key] = np.array(value) / ori_citizen_num
+            
+            for key, value in list(group_stats.items()) : 
+                group_stats[key] = np.array(value) / ori_citizen_num
 
         x_label = "days" 
-        y_label = "percentage" if stats_form == "percent" else "num"
+        y_label = "percentage" if stats_digit_form == "percent" else "num"
         
-        if stats == "basic" : 
-            datas = [infected_nums, uninfected_nums]
-            labels = ["infected_num", "uninfected_num"]
+        if popultaion : 
 
-            ax = axes[0][idx] if compare_key_num else axes[0]
-            plotting(datas, labels, days, ax=ax, title=(temp_param_key, param_value), x_label=x_label, y_label=y_label)
+            if stats_type == "basic" : 
+                labels = ["infected_num", "uninfected_num"]
+                datas = [stats[label] for label in labels]
+                
+                ax = axes[0][idx] if compare_key_num else axes[0]
+                plotting(datas, labels, days, ax=ax, title=(temp_param_key, param_value), x_label=x_label, y_label=y_label)
 
-            datas = [requests_nums, anti_body_nums, ill_nums]
-            labels = ["request_num", "anti_body_num", "seriously_ill_num"]
+                labels = ["request_num", "anti_body_num", "ill_num"]
+                datas = [stats[label] for label in labels]
 
-            ax = axes[1][idx] if compare_key_num else axes[1]
-            sub_title = (temp_param_key, param_value) if compare_key_num else None  
-            plotting(datas, labels, days, ax=ax, title=sub_title, x_label=x_label, y_label=y_label)
-        elif stats == "vaccine_control" : 
-            datas = [np.array(infected_nums) + np.array(ill_nums)]
-            labels = ["unsolved_num"]
+                ax = axes[1][idx] if compare_key_num else axes[1]
+                sub_title = (temp_param_key, param_value) if compare_key_num else None  
+                plotting(datas, labels, days, ax=ax, title=sub_title, x_label=x_label, y_label=y_label)
+            elif stats_type == "vaccine_control" : 
+                labels = ["unsolved_num"]
+                datas = [stats["infected_num"] + stats["ill_num"]]
+                
+                ax = axes[idx] if compare_key_num else axes
+                sub_title = (temp_param_key, param_value) if compare_key_num else None  
+                plotting(datas, labels, days, ax=ax, title=sub_title, x_label=x_label, y_label=y_label)
+        
+        else : 
 
-            ax = axes[idx] if compare_key_num else axes
-            sub_title = (temp_param_key, param_value) if compare_key_num else None  
-            plotting(datas, labels, days, ax=ax, title=sub_title, x_label=x_label, y_label=y_label)
+            if stats_type == "basic" : 
+                assert metric is not None 
+                datas = group_stats[metric]
+                labels = metric
+
+                ax = axes[idx] if compare_key_num else axes
+                
+                plotting(datas, labels, days, ax=ax, title=(temp_param_key, param_value), x_label=x_label, y_label=y_label, group=True)
             
     plt.show()
 
-def plotting(datas, labels, days, ax, title, x_label, y_label) :  
+def plotting(datas, labels, days, ax, title, x_label, y_label, group=False) :  
     epochs = np.arange(1, days+1)
 
-    for idx, data in enumerate(datas) :    
-        mean, std = collect_stats(data, 0)
-        ax.plot(epochs, mean, label=labels[idx])
-        ax.fill_between(epochs, mean-std, mean+std ,alpha=0.3)
-        ax.set_xlabel(x_label)
-        ax.set_ylabel(y_label)
-        
-        if title : 
-            param_key, param_value = title 
-            ax.set_title(param_key + " : " + str(param_value))
-        
-        ax.legend()
+    if not group : 
+        for idx, data in enumerate(datas) :    
+            mean, std = collect_stats(data, 0)
+            ax.plot(epochs, mean, label=labels[idx])
+            ax.fill_between(epochs, mean-std, mean+std ,alpha=0.3)
+            ax.set_xlabel(x_label)
+            ax.set_ylabel(y_label)
+            
+            if title : 
+                param_key, param_value = title 
+                ax.set_title(param_key + " : " + str(param_value))
+            
+            ax.legend()
+    
+    if group : 
+        mean, std = collect_stats(datas, 0)
+        group_num = mean.shape[1]
+        for group_id in range(group_num) : 
+            group_mean = mean[:, group_id]
+            group_std = std[:, group_id]
+            ax.plot(epochs, group_mean, label="group {}".format(group_id))
+            ax.fill_between(epochs, group_mean-group_std, group_mean+group_std ,alpha=0.3)
+            ax.set_xlabel(x_label)
+            ax.set_ylabel(y_label)
+            
+            if title : 
+                param_key, param_value = title 
+                ax.set_title(param_key + " : " + str(param_value) + ", metric : " + labels)
+            
+            ax.legend()
 
 # env = vaccine_system(1000, 100, 7)
 # infected_nums, uninfected_nums = env.simulate()
@@ -474,7 +561,7 @@ def plotting(datas, labels, days, ax, title, x_label, y_label) :
 
 policy = "unif"
 setting = "full_info"
-params = {"citizen_num" : 1000, "vaccine_num" : 500, "days" : 21, "r_nau" : 1.5, "gov" : Government(policy), "setting" : setting}
-main_sim(params, sim_num=100, stats="basic", stats_form="percent")
+params = {"citizen_num" : 1000, "vaccine_num" : [200, 500, 1000], "days" : 21, "r_nau" : 1.5, "gov" : Government(policy), "setting" : setting}
+main_sim(params, sim_num=10, stats_type="basic", stats_digit_form="percent", popultaion=False, metric="infected_num")
 
 #plotting(uninfected_nums, "uninfected_num")
