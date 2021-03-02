@@ -19,11 +19,10 @@
 2: seniors (age 65+)
 3: others
 
-  <img src="C:\Users\fyfse\AppData\Roaming\Typora\typora-user-images\image-20210302133122790.png" alt="image-20210302133122790" style="zoom:%;" />
 
-![image-20210302133229165](C:\Users\fyfse\AppData\Roaming\Typora\typora-user-images\image-20210302133229165.png)
+![image](https://user-images.githubusercontent.com/46977839/109699473-9d3b8d00-7b5e-11eb-99d9-4e06e5a02d8f.png)
 
-![image-20210302133248706](C:\Users\fyfse\AppData\Roaming\Typora\typora-user-images\image-20210302133248706.png)
 
-Contribution: Ruturaj Bhagat, Tejas Gujar, Victor Ye Dong, Yingfei Fan
+
+Contribution: Bhagat, Gujar, Dong, Fan
 
